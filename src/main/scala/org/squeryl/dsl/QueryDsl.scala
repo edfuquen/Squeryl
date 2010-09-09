@@ -22,6 +22,8 @@ import org.squeryl.internals._
 import org.squeryl._
 import java.sql.{SQLException, ResultSet}
 
+import javax.sql.DataSource
+
 trait QueryDsl
   extends DslFactory
   with WhereState
@@ -60,6 +62,18 @@ trait QueryDsl
       val res = _executeTransactionWithin(SessionFactory.newSession, a _)
       s.bindToCurrentThread
       res
+  }
+
+  //Specify a session for a Transaction
+  def transaction[A](ds: DataSource, adapter: DatabaseAdapter)(a: =>A): A = 
+    if(! Session.hasCurrentSession)
+      _executeTransactionWithin(Session.create(ds.getConnection,adapter), a _)
+    else {
+      val s = Session.currentSession
+      s.unbindFromCurrentThread
+      val res = _executeTransactionWithin(Session.create(ds.getConnection,adapter), a _)
+      s.bindToCurrentThread
+      res
     }
 
   /**
@@ -74,6 +88,14 @@ trait QueryDsl
     else {
       a
     }
+
+  def inTransaction[A](ds: DataSource, adapter: DatabaseAdapter)(a: =>A): A =
+    if(! Session.hasCurrentSession)
+      _executeTransactionWithin(Session.create(ds.getConnection,adapter), a _)
+    else {
+      a
+  }
+
 
   private def _executeTransactionWithin[A](s: Session, a: ()=>A) = {
 
