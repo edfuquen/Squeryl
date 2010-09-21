@@ -16,8 +16,8 @@
 package org.squeryl.dsl
 
 import ast._
-import org.squeryl.{Session, Query}
-import org.squeryl.internals.StatementWriter
+import org.squeryl.{Schema, Session, Query}
+import org.squeryl.internals.{AttributeValidOnNonNumericalColumn, AttributeValidOnNumericalColumn, StatementWriter}
 
 trait FieldTypes {
   self: TypeArithmetic =>
@@ -101,11 +101,14 @@ trait NumericalExpression[A] extends TypedExpressionNode[A] {
   def in[B <% NumericalExpression[_]](e: Query[B]) = new BinaryOperatorNodeLogicalBoolean(this, e.ast, "in")
   def notIn[B <% NumericalExpression[_]](e: Query[B]) = new BinaryOperatorNodeLogicalBoolean(this, e.ast, "not in")
 
-  def in(l: ListNumerical) = new BinaryOperatorNodeLogicalBoolean(this, l, "in")
-  def notIn(l: ListNumerical) = new BinaryOperatorNodeLogicalBoolean(this, l, "not in")
+  def in(l: ListNumerical) = new InListExpression(this, l, true)
+  def notIn(l: ListNumerical) = new InListExpression(this, l, false)
 
   def between[B,C](b: NumericalExpression[B], c: NumericalExpression[C]) = new BetweenExpression(this, b, c)
 
+  def is(columnAttributes: AttributeValidOnNumericalColumn*)(implicit restrictUsageWithinSchema: Schema) =
+    new ColumnAttributeAssignment(_fieldMetaData, columnAttributes)
+  
   def ~ = this
 }
 
@@ -128,6 +131,9 @@ trait NonNumericalExpression[A] extends TypedExpressionNode[A] {
   def notIn(e: Query[A]) = new BinaryOperatorNodeLogicalBoolean(this, e.ast, "not in")
 
   def between(b: NonNumericalExpression[A], c: NonNumericalExpression[A]) = new BetweenExpression(this, b, c)
+
+  def is(columnAttributes: AttributeValidOnNonNumericalColumn*)(implicit restrictUsageWithinSchema: Schema) =
+    new ColumnAttributeAssignment(_fieldMetaData, columnAttributes)  
 }
 
 trait BooleanExpression[A] extends NonNumericalExpression[A] {
@@ -141,8 +147,8 @@ trait EnumExpression[A] extends NonNumericalExpression[A] {
 trait StringExpression[A] extends NonNumericalExpression[A] {
   outer =>
   
-  def in(e: ListString) = new BinaryOperatorNodeLogicalBoolean(this, e, "in")
-  def notIn(e: ListString) = new BinaryOperatorNodeLogicalBoolean(this, e, "not in")
+  def in(e: ListString) = new InListExpression(this, e, true)
+  def notIn(e: ListString) = new InListExpression(this, e, false)
 
   //def between(lower: BaseScalarString, upper: BaseScalarString): LogicalBoolean = error("implement me") //new BinaryOperatorNode(this, lower, div) with LogicalBoolean
   def like(e: StringExpression[_])  = new BinaryOperatorNodeLogicalBoolean(this, e, "like")
@@ -158,8 +164,8 @@ trait StringExpression[A] extends NonNumericalExpression[A] {
 
 trait DateExpression[A] extends NonNumericalExpression[A] {
 
-  def in(e: ListDate) = new BinaryOperatorNodeLogicalBoolean(this, e, "in")
-  def notIn(e: ListDate) = new BinaryOperatorNodeLogicalBoolean(this, e, "not in")
+  def in(e: ListDate) = new InListExpression(this, e, true)
+  def notIn(e: ListDate) = new InListExpression(this, e, false)
 
   def ~ = this
 }

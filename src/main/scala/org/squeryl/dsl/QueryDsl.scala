@@ -283,6 +283,8 @@ trait QueryDsl
 
   implicit def queryable2OptionalQueryable[A](q: Queryable[A]) = new OptionalQueryable[A](q)
 
+  implicit def view2QueryAll[A](v: View[A]) = from(v)(a=> select(a))
+
   def update[A](t: Table[A])(s: A =>UpdateStatement):Int = t.update(s)
 
   def manyToManyRelation[L <: KeyedEntity[_],R <: KeyedEntity[_],A <: KeyedEntity[_]](l: Table[L], r: Table[R]) = new ManyToManyRelationBuilder(l,r)
@@ -597,5 +599,5 @@ trait QueryDsl
   implicit def t3te[A1,A2,A3](t: (A1,A2,A3)) = new CompositeKey3[A1,A2,A3](t._1, t._2, t._3)
 
   implicit def t4te[A1,A2,A3,A4](t: (A1,A2,A3,A4)) = new CompositeKey4[A1,A2,A3,A4](t._1, t._2, t._3, t._4)
-
+  
 }

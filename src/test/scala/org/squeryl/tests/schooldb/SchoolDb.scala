@@ -28,6 +28,7 @@ import org.squeryl._
 import adapters.{PostgreSqlAdapter, OracleAdapter, MySQLAdapter}
 import internals.FieldReferenceLinker
 
+
 class SchoolDbObject extends KeyedEntity[Int] {
   var id: Int = 0
 }
@@ -86,20 +87,16 @@ class Professor(var lastName: String, var yearlySalary: Float, var weight: Optio
   var id: Long = 0
   def this() = this("", 0.0F, Some(0.0F), 80.0F, Some(0))
   override def toString = "Professor:" + id
+}
 
-  import org.squeryl.PrimitiveTypeMode._
-  
-  //def assignments =
-    //oneToMany(this, SDB.courseAssigments) ((p, ca) => p.id === ca.professorId)
 
-  //def assign = Relation(this, SDB.courseAssigments) {}
-//  def assignments =
-//    One(this) ToMany(SDB.courseAssigments) on(p=>p.id, ca => ca.professorId)
+class School(val addressId: Int, val name: String) extends KeyedEntity[Long] {
+  var id: Long = 0
 }
 
 object SDB extends SchoolDb
 
-class SchoolDb extends Schema with QueryTester {
+class SchoolDb extends Schema {
 
   import org.squeryl.PrimitiveTypeMode._
 
@@ -132,7 +129,27 @@ class SchoolDb extends Schema with QueryTester {
   val courseSubscriptions = table[CourseSubscription]
 
   val courseAssigments = table[CourseAssignment]
+
+  val schools = table[School]
+
+  on(schools)(s => declare(
+    s.name is(indexed("uniqueIndexName"), unique),
+    s.name defaultsTo("no name"),
+    columns(s.name, s.addressId) are(indexed)
+    //_.addressId is(autoIncremented) currently only supported on KeyedEntity.id ... ! :(
+  ))
+
+  override def drop = super.drop
+}
+
+class SchoolDbTestRun extends QueryTester {
+
+  import org.squeryl.PrimitiveTypeMode._
   
+  val schema = new SchoolDb
+
+  import schema._
+
   val testInstance = new {
 
     drop
@@ -228,9 +245,9 @@ class SchoolDb extends Schema with QueryTester {
     blobTest
     
     testYieldInspectionResidue
-    
+
     testNewLeftOuterJoin3
-    
+
     testNewLeftOuterJoin1
 
     testNewLeftOuterJoin2
@@ -1098,7 +1115,7 @@ class SchoolDb extends Schema with QueryTester {
 
     println('testNewOuterJoin2 + " passed.")
   }
-
+  
   def testNewLeftOuterJoin3 {
     import testInstance._
 
@@ -1158,7 +1175,10 @@ class Issue14 extends Schema with QueryTester {
     weight real
   )
 """)
-        try {stmt.execute("create sequence s_issue14")}
+
+        //stmt.execute("create sequence s_id_issue14")
+        val seqName = (new OracleAdapter).createSequenceName(professors.posoMetaData.findFieldMetaDataForProperty("id").get)
+        try {stmt.execute("create sequence " + seqName)}
         catch {
           case e:SQLException => {} 
         }

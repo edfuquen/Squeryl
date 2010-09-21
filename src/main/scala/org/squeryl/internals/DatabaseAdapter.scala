@@ -111,7 +111,7 @@ trait DatabaseAdapter {
       }
     }
     
-    if(qen.whereClause != None && qen.whereClause.get.children.filter(c => !c.inhibited) != Nil) {      
+    if(qen.hasUnInhibitedWhereClause) {      
       sw.write("Where")
       sw.nextLine
       sw.writeIndented {
@@ -215,18 +215,31 @@ trait DatabaseAdapter {
 
     val dbTypeDeclaration = schema._columnTypeFor(fmd, this)
 
-    var res = "  " + fmd.columnName + " " + dbTypeDeclaration
+    val sb = new StringBuilder(128)
+  
+    sb.append("  ")
+    sb.append(fmd.columnName)
+    sb.append(" ")
+    sb.append(dbTypeDeclaration)
+
+    for(d <- fmd.defaultValue) {
+      sb.append(" default ")
+      val sw = new StatementWriter(true,this)
+      sw.addParam(d.value.asInstanceOf[AnyRef])
+      d.doWrite(sw)
+      sb.append(sw.statement)
+    }
 
     if(isPrimaryKey)
-      res += " primary key"
+      sb.append(" primary key")
 
     if(!fmd.isOption)
-      res += " not null"
+      sb.append(" not null")
     
     if(supportsAutoIncrementInColumnDeclaration && fmd.isAutoIncremented)
-      res += " auto_increment"
+      sb.append(" auto_increment")
 
-    res
+    sb.toString
   }
 
   def supportsAutoIncrementInColumnDeclaration:Boolean = true
@@ -245,7 +258,7 @@ trait DatabaseAdapter {
         ","
       )
     }
-    sw.write(")\n ")
+    sw.write(")")
   }
 
   def prepareStatement(c: Connection, sw: StatementWriter, session: Session): PreparedStatement =
@@ -414,9 +427,15 @@ trait DatabaseAdapter {
 //      "?"
 //    }
 
-  def postCreateTable(s: Session, t: Table[_]) = {}
+  /**
+   * When @arg printSinkWhenWriteOnlyMode is not None, the adapter will not execute any statement, but only silently give it to the String=>Unit closure
+   */
+  def postCreateTable(t: Table[_], printSinkWhenWriteOnlyMode: Option[String => Unit]) = {}
   
   def postDropTable(t: Table[_]) = {}
+
+  def createSequenceName(fmd: FieldMetaData) = 
+    "s_" + fmd.parentMetaData.viewOrTable.name + "_" + fmd.columnName
 
   def writeConcatFunctionCall(fn: FunctionNode[_], sw: StatementWriter) = {
     sw.write(fn.name)
@@ -653,5 +672,54 @@ trait DatabaseAdapter {
   def writeConcatOperator(left: ExpressionNode, right: ExpressionNode, sw: StatementWriter) = {
     val binaryOpNode = new BinaryOperatorNode(left, right, "||")
     binaryOpNode.doWrite(sw)
+  }
+
+//  /**
+//   * @nameOfCompositeKey when not None, the column group forms a composite key, 'nameOfCompositeKey' can be used
+//   * as part of the name to create a more meaningfull name for the constraint
+//   */
+//  def writeUniquenessConstraint(columnDefs: Seq[FieldMetaData], nameOfCompositeKey: Option[String]) = ""
+
+  /**
+   * @name the name specified in the Schema, when not None, it  must be used as the name
+   * @nameOfCompositeKey when not None, the column group forms a composite key, 'nameOfCompositeKey' can be used
+   * as part of the name to create a more meaningfull name for the constraint, when 'name' is None
+   */
+  def writeIndexDeclaration(columnDefs: Seq[FieldMetaData], name:Option[String], nameOfCompositeKey: Option[String], isUnique: Boolean) = {                                    
+    val sb = new StringBuilder(256)
+    sb.append("create ")
+
+    if(isUnique)
+      sb.append("unique ")
+
+    sb.append("index ")
+
+    val tableName = columnDefs.head.parentMetaData.viewOrTable.name
+
+    if(name != None)
+      sb.append(name.get)
+    else if(nameOfCompositeKey != None)
+      sb.append("idx" + nameOfCompositeKey.get)
+    else
+      sb.append("idx" + generateAlmostUniqueSuffixWithHash(tableName + "-" + columnDefs.map(_.columnName).mkString("-")))
+
+    sb.append(" on ")
+
+    sb.append(tableName)
+
+    sb.append(columnDefs.map(_.columnName).mkString(" (",",",")"))
+
+    sb.toString
+  }
+
+  /**
+   * This will create an probabilistically unique string of length no longer than 11 chars,
+   * it can be used to create "almost unique" names where uniqueness is not an absolute requirement,
+   * is not ,
+   */
+  def generateAlmostUniqueSuffixWithHash(s: String): String = {
+    val a32 = new java.util.zip.Adler32
+    a32.update(s.getBytes)
+    a32.getValue.toHexString
   }
 }
